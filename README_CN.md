@@ -63,6 +63,9 @@ python -c "import torch; print(torch.__version__); print(torch.cuda.is_available
 
 ## 数据集结构
 
+数据集下载地址：
+Hugging Face: https://huggingface.co/datasets/vpan1226/OPT-SND
+
 数据集组织方式：
 ```
 data/sealingNail_normal/

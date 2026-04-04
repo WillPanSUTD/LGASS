@@ -1,3 +1,16 @@
+---
+language:
+- en
+license: apache-2.0
+tags:
+- 3d
+- point-cloud
+- semantic-segmentation
+- defect-detection
+- industrial
+task_categories:
+- image-segmentation
+---
 
 LGANet： An improved Graph Attention Network for Semantic Segmentation of Industrial Point Clouds in Automotive Battery Sealing Nail Defect Detection
 
@@ -115,9 +128,8 @@ During scanning, the sealing nails were placed on a precision rotary stage to en
 ---
 
 ## Dataset Structure
-Data can be downloaded from 
-TXT format: https://drive.google.com/file/d/1zyCQI2J5TFcRKKLp0KkUvsXCY-D-nVCV/view?usp=drive_link
-NPZ format: https://drive.google.com/file/d/1_ni0_XzQVsQ5ehoDo1MfV0wjTkiN1XjO/view?usp=drive_link
+Data can be downloaded from:
+Hugging Face Dataset: https://huggingface.co/datasets/vpan1226/OPT-SND
 The dataset is organized as follows:
 
 ```

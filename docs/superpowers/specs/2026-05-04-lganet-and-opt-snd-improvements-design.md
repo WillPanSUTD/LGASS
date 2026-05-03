@@ -35,6 +35,10 @@ Out of scope:
 
 **Class name:** `Stain` (污渍). The paper's Table 1 (dataset description) and the existing README both use `Stain`. The string `Moltenbead` appearing in paper Table 3 is a translation slip and will not be propagated into the code/dataset documentation. The dataset card and code use `Stain` consistently.
 
+**Class count — 8 raw vs 6 reported:** The on-disk dataset (and `train.py`) defines **8 classes**: `{Background1: 0, Burst: 1, Pit: 2, Stain: 3, Warpage: 4, Background2: 5, Burst2: 6, Pinhole: 7}`. The paper reports results on a **merged 6-class** view: `Background1 ∪ Background2 → Normal`, `Burst ∪ Burst2 → Burst`. The dataset card describes both the raw 8-class schema and the merged 6-class evaluation view used in the paper. The code-repo README's results table keeps the 6-column format (matching paper Table 3).
+
+**Hyperparameter mismatch — paper Table 2 vs original `train.py`:** Paper Table 2 lists `optimizer=AdamW, lr=0.01, batch_size=8`. The original `train.py` uses `optimizer=Adam, lr=0.001, batch_size=4`. We do not know which run produced the paper's headline numbers. We ship two configs side-by-side with explicit comments: `configs/paper.yaml` (Table 2 values) and `configs/original.yaml` (original `train.py` values). `train.py` defaults to `paper.yaml`. The README documents both files and the discrepancy.
+
 ## 4. Phase split
 
 **Phase 1 — this session:** All documentation, all utility scripts that don't require a checkpoint, configs, license, git cleanup. Deliverable: a coherent repo + dataset card the user can publish immediately.
@@ -128,30 +132,52 @@ CLI: `python export_report.py --input <results-dir> --output <reports-dir>`
 
 ### 5.6 LGASS code repo: configs and seed handling
 
-#### 5.6.1 `configs/default.yaml`
+#### 5.6.1 `configs/paper.yaml` (default)
 
 ```yaml
-# default training config — matches paper Table 2
+# Paper-Table-2 hyperparameter set (EAAI 2026).
+# train.py uses this as default. Switch to configs/original.yaml to match
+# the values originally hard-coded in train.py.
 seed: 42
-epoch: 300
-batch_size: 8
+num_classes: 8                     # raw schema — 8 classes on disk
 num_points: 16384
-optimizer: adamw
-learning_rate: 0.01
+epoch: 300
+optimizer: adamw                   # paper Table 2
+learning_rate: 0.01                # paper Table 2
+batch_size: 8                      # paper Table 2
+weight_decay: 0.0001               # not in Table 2 — kept from original train.py
 lr_decay: multistep
-lr_decay_milestones: [120, 240]   # placeholder — confirm against original
-lr_decay_gamma: 0.1
-k_neighbors: 16                    # placeholder — confirm against code
-input_type: normals_only           # paper's best setting (Table 5)
+lr_decay_milestones: [120, 240]    # PLACEHOLDER — not in paper, edit if known
+lr_decay_gamma: 0.1                # PLACEHOLDER — not in paper, edit if known
+k_neighbors: 16                    # PLACEHOLDER — not in paper, edit if known
+input_type: normals_only           # paper Table 5 best setting
 data_root: data/sealingNail_npz
-num_classes: 6
 ```
 
-Two values are flagged as **placeholders** because the paper does not specify them: `lr_decay_milestones` and `k_neighbors`. We default to common values and add a comment telling the user to adjust to match the original training run. This is honest and won't silently produce wrong numbers.
+Three values flagged as **placeholders** because the paper does not specify them: `lr_decay_milestones`, `lr_decay_gamma`, `k_neighbors`. Comments tell the reader to edit if the true values are recovered.
 
-#### 5.6.2 `configs/paper.yaml`
+#### 5.6.2 `configs/original.yaml`
 
-Identical to `default.yaml` initially; intended as the immutable "paper reproduction" reference once the user retrains and confirms the placeholder values.
+```yaml
+# Hyperparameter set hard-coded in the original train.py before the
+# config refactor. Paper Table 2 differs (see configs/paper.yaml).
+# Kept for transparency: we cannot confirm which set produced the paper's
+# headline numbers without retraining both.
+seed: 42
+num_classes: 8
+num_points: 16384
+epoch: 300
+optimizer: adam                    # original train.py
+learning_rate: 0.001               # original train.py
+batch_size: 4                      # original train.py
+weight_decay: 0.0001               # original train.py
+lr_decay: step
+lr_decay_milestones: [20]          # MOMENTUM_DECCAY_STEP
+lr_decay_gamma: 0.5                # original train.py
+k_neighbors: 16                    # PLACEHOLDER
+input_type: normals_only
+data_root: data/sealingNail_npz
+```
 
 #### 5.6.3 `train.py` modifications
 
@@ -254,28 +280,55 @@ Note: exact N/M counts will be inserted after I check the actual HF repo file li
 
 #### 5.7.7 Data fields
 
-Per `.npz` file:
+Each `.npz` contains a single key `points` with shape `(P, 7)`, dtype `float32` (label column may be cast at load time):
 
-| Key       | Shape    | dtype   | Description                        |
-|-----------|----------|---------|------------------------------------|
-| `points`  | (P, 3)   | float32 | XYZ coordinates in millimeters     |
-| `normals` | (P, 3)   | float32 | Unit surface normals               |
-| `labels`  | (P,)     | int64   | Semantic class id (0..5)           |
+| Column index | Field    | Description                          |
+|--------------|----------|--------------------------------------|
+| 0            | x        | X coordinate (mm)                     |
+| 1            | y        | Y coordinate (mm)                     |
+| 2            | z        | Z coordinate (mm)                     |
+| 3            | nx       | surface-feature / normal x            |
+| 4            | ny       | surface-feature / normal y            |
+| 5            | nz       | surface-feature / normal z            |
+| 6            | label    | semantic class id (raw 8-class, 0..7) |
 
-Where `P` is per-sample (variable; ~16384 after subsampling per paper).
+Loading example:
+
+```python
+import numpy as np
+data = np.load("sealingNail_npz/train/sample_0001.npz", allow_pickle=True)
+arr = data["points"]            # (P, 7) float32
+xyz = arr[:, 0:3]
+feats = arr[:, 3:6]
+labels = arr[:, 6].astype(np.int64)
+```
+
+`P` varies per sample; the training loader subsamples to 16384 points.
 
 #### 5.7.8 Class definitions
 
-| ID | Name    | Description                              |
-|----|---------|------------------------------------------|
-| 0  | Normal  | Background / nominal sealing surface      |
-| 1  | Burst   | Crack / rupture defect                    |
-| 2  | Pit     | Concave depression                        |
-| 3  | Stain   | Surface discoloration / contamination     |
-| 4  | Warpage | Out-of-plane deformation                  |
-| 5  | Pinhole | Small puncture                            |
+**Raw schema (8 classes, as stored on disk):**
 
-Class distribution table (from paper Table 1, reproduced in 5.3 above).
+| ID | Name        | Description                                |
+|----|-------------|--------------------------------------------|
+| 0  | Background1 | Background region / nominal surface (A)     |
+| 1  | Burst       | Crack / rupture defect                      |
+| 2  | Pit         | Concave depression                          |
+| 3  | Stain       | Surface discoloration / contamination       |
+| 4  | Warpage     | Out-of-plane deformation                    |
+| 5  | Background2 | Background region / nominal surface (B)     |
+| 6  | Burst2      | Burst variant                               |
+| 7  | Pinhole     | Small puncture                              |
+
+**Paper evaluation view (6 classes, after merge):**
+
+The EAAI 2026 paper evaluates on a merged 6-class taxonomy:
+
+- `Normal = Background1 ∪ Background2`  (raw 0 ∪ 5)
+- `Burst = Burst ∪ Burst2`               (raw 1 ∪ 6)
+- `Pit, Stain, Warpage, Pinhole` unchanged
+
+Class distribution from paper Table 1 (in the merged 6-class view) is reproduced in 5.3 above. Users intending to reproduce paper numbers should apply the same merge at evaluation time; the included `evaluate.py` (Phase 2) does this by default and exposes `--raw-schema` to evaluate on all 8 classes.
 
 #### 5.7.9 Acquisition setup
 
@@ -325,8 +378,8 @@ LGANet repo (to be renamed LGASS):
 ├── README.md                        (REWRITE: Phase 1)
 ├── README_CN.md                     (REWRITE: Phase 1, full parity)
 ├── configs/
-│   ├── default.yaml                 (NEW, Phase 1)
-│   └── paper.yaml                   (NEW, Phase 1)
+│   ├── paper.yaml                   (NEW, Phase 1, default config)
+│   └── original.yaml                (NEW, Phase 1, original train.py values)
 ├── scripts/
 │   ├── reproduce_paper.sh           (NEW, Phase 2)
 │   └── upload_to_hf.py              (NEW, Phase 2)

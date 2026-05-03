@@ -3,6 +3,9 @@ import sys
 from pathlib import Path
 import numpy as np
 import pytest
+import importlib.util
+
+HAS_OPEN3D = importlib.util.find_spec("open3d") is not None
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -21,6 +24,7 @@ def test_visualize_help():
     assert "--save" in r.stdout
 
 
+@pytest.mark.skipif(not HAS_OPEN3D, reason="open3d not installed in this environment")
 def test_visualize_loads_npz_and_renders_offscreen(tmp_path):
     # Tiny synthetic .npz: 100 points, all class 0.
     pts = np.zeros((100, 7), dtype=np.float32)

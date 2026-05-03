@@ -1,0 +1,22 @@
+# Smoke-test config: minimal-cost run to verify the training pipeline
+# end-to-end (CUDA + pointops + dataloader + model.forward + checkpoint save)
+# without committing to a multi-hour paper-reproduction run.
+#
+# Expected runtime on a single mid-range GPU: ~2-5 minutes.
+# Use this to confirm `bash scripts/reproduce_paper.sh` will not crash before
+# kicking off the real run with configs/paper.yaml.
+seed: 42
+num_classes: 8
+num_points: 2048                   # 8x smaller than paper config
+epoch: 2                           # 150x fewer than paper
+optimizer: adamw
+learning_rate: 0.01
+batch_size: 2                      # tiny batch
+weight_decay: 0.0001
+lr_decay: step
+lr_decay_step_size: 1
+lr_decay_gamma: 0.5
+lr_decay_milestones: []
+k_neighbors: 16
+input_type: normals_only
+data_root: data/sealingNail_npz

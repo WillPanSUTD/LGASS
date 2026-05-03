@@ -5,7 +5,7 @@ tqdm>=4.62.0
 tensorboard>=2.7.0
 h5py>=3.6.0
 scikit-learn>=1.0.0
-git+https://github.com/Silverster98/pointops.git
+# pointops: build from source — see README "Installation" (cd lib/pointops && python setup.py install)
 pytest>=7.0.0
 PyYAML>=6.0
 huggingface_hub>=0.20.0

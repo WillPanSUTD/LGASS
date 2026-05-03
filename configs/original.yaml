@@ -1,0 +1,18 @@
+# Hyperparameter set hard-coded in the original train.py before the
+# config refactor. Paper Table 2 differs (see configs/paper.yaml).
+# Kept for transparency: we cannot confirm which set produced the paper's
+# headline numbers without retraining both.
+seed: 42
+num_classes: 8
+num_points: 16384
+epoch: 300
+optimizer: adam                    # original train.py
+learning_rate: 0.001               # original train.py
+batch_size: 4                      # original train.py
+weight_decay: 0.0001               # original train.py
+lr_decay: step
+lr_decay_milestones: [20]          # MOMENTUM_DECCAY_STEP
+lr_decay_gamma: 0.5                # original train.py
+k_neighbors: 16                    # PLACEHOLDER
+input_type: normals_only
+data_root: data/sealingNail_npz

@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import os
 import os.path
 import time
@@ -38,6 +39,10 @@ def build_lr_lambda(cfg):
     gamma = cfg["lr_decay_gamma"]
     if cfg["lr_decay"] == "step":
         step = cfg["lr_decay_step_size"]
+        if step <= 0:
+            raise ValueError(
+                f"lr_decay=step requires lr_decay_step_size > 0, got {step}"
+            )
         return lambda e: gamma ** (e // step)
     if cfg["lr_decay"] == "multistep":
         milestones = sorted(cfg["lr_decay_milestones"])
@@ -72,7 +77,6 @@ def main():
         os.makedirs(logs_dir)
 
     # Logger setup
-    import logging
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     log_file = os.path.join(logs_dir, 'log_embedding.txt')
@@ -243,7 +247,7 @@ def main():
             logger.info('Validation mean class mIoU %s %f' % (' ' * 6, eval_mIoU))
 
             logger.info('Save last model...')
-            save_path = os.path.join('logs', log_path)
+            save_path = logs_dir
             if not os.path.exists(save_path):
                 os.makedirs(save_path)
             logger.info('Saving in %s' % save_path)
@@ -258,7 +262,7 @@ def main():
             if eval_mIoU >= best_mean_class_IoU:
                 best_mean_class_IoU = eval_mIoU
                 logger.info('Save best model...')
-                save_path = os.path.join('logs', log_path)
+                save_path = logs_dir
                 if not os.path.exists(save_path):
                     os.makedirs(save_path)
                 logger.info('Saving in %s' % save_path)

@@ -112,7 +112,7 @@ def main():
     LEARNING_RATE_CLIP = 1e-5
     MOMENTUM_ORIGINAL = 0.1
     MOMENTUM_DECCAY = 0.5
-    MOMENTUM_DECCAY_STEP = cfg.get("lr_decay_step_size", 20)
+    MOMENTUM_DECCAY_STEP = 20  # BN momentum decay step (independent of lr schedule)
 
     # Change device selection to prefer CUDA if available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -38,3 +38,15 @@ def test_dataset_path_is_npz():
 
 def test_links_to_huggingface_dataset():
     assert "huggingface.co/datasets/vpan1226/OPT-SND" in README
+
+README_CN = (REPO / "README_CN.md").read_text(encoding="utf-8")
+
+CN_REQUIRED = ["LGASS", "结果", "消融", "超参", "数据集结构", "安装", "使用", "引用", "许可", "致谢"]
+
+def test_cn_readme_has_full_parity():
+    for h in CN_REQUIRED:
+        assert h in README_CN, f"CN README missing: {h}"
+
+def test_cn_results_numbers_present():
+    for token in ["99.47", "79.23", "92.37"]:
+        assert token in README_CN

@@ -1,12 +1,13 @@
+import argparse
+import json
+import os
 import os.path
-from util.sealingNails_npz import SealingNailDatasetNPZ
-from util.data_util import collate_fn
-from torch.utils.data import DataLoader
-from model.sem.GraphAttention import graphAttention_seg_repro as Model
-import logging
-import torch
-from tqdm import tqdm
 import time
+
+import torch
+import yaml
+
+from util.seeding import set_seed
 
 
 def inplace_relu(m):
@@ -20,19 +21,62 @@ def bn_momentum_adjust(m, momentum):
         m.momentum = momentum
 
 
+def build_optimizer(name, params, lr, weight_decay):
+    name = name.lower()
+    if name == "adam":
+        return torch.optim.Adam(params, lr=lr, weight_decay=weight_decay)
+    if name == "adamw":
+        return torch.optim.AdamW(params, lr=lr, betas=(0.9, 0.999), eps=1e-08,
+                                 weight_decay=weight_decay)
+    if name == "sgd":
+        return torch.optim.SGD(params, lr=lr, momentum=0.9, weight_decay=weight_decay)
+    raise ValueError(f"unsupported optimizer: {name}")
+
+
+def build_lr_lambda(cfg):
+    """Returns a function epoch -> lr_multiplier matching cfg's schedule."""
+    gamma = cfg["lr_decay_gamma"]
+    if cfg["lr_decay"] == "step":
+        step = cfg["lr_decay_step_size"]
+        return lambda e: gamma ** (e // step)
+    if cfg["lr_decay"] == "multistep":
+        milestones = sorted(cfg["lr_decay_milestones"])
+        def f(e):
+            n = sum(1 for m in milestones if e >= m)
+            return gamma ** n
+        return f
+    raise ValueError(f"unsupported lr_decay: {cfg['lr_decay']}")
+
+
 def main():
-    """Parameter"""
-    # Change device selection to prefer CUDA if available
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    parser = argparse.ArgumentParser(description="LGANet training")
+    parser.add_argument("--config", default="configs/paper.yaml",
+                        help="Path to YAML config file (default: configs/paper.yaml)")
+    parser.add_argument("--output_dir", default=None,
+                        help="Directory for logs and checkpoints (default: logs/<timestamp>)")
+    args = parser.parse_args()
+
+    with open(args.config, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+
+    # Deterministic seeding — must happen before any randomness
+    set_seed(cfg["seed"])
+
+    # Resolve output directory
     log_path = 'weight_' + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    logs_dir = os.path.join('logs', log_path)
+    if args.output_dir is not None:
+        logs_dir = args.output_dir
+    else:
+        logs_dir = os.path.join('logs', log_path)
     if not os.path.exists(logs_dir):
         os.makedirs(logs_dir)
-    # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+
+    # Logger setup
+    import logging
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-    logs_dir = os.path.join(logs_dir, 'log_embedding.txt')
-    file_handler = logging.FileHandler(logs_dir)
+    log_file = os.path.join(logs_dir, 'log_embedding.txt')
+    file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.INFO)
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
@@ -41,29 +85,44 @@ def main():
     console_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
-    root = './data/sealingNail_npz'
-    class_label = {'Background1': 0, 'Burst': 1, 'Pit': 2, 'Stain': 3, 'Warpage': 4, 'Background2': 5, 'Burst2': 6, 'Pinhole': 7}
-    feat_dim = 6
-    num_class = 8
-    num_points = 16384
-    optimizer = 'Adam'
-    learning_rate = 0.001
-    weight_decay = 1e-04
-    end_epoch = 300
-    lr_decay = 0.5
+
+    # Log the resolved config
+    logger.info("Resolved config: %s", json.dumps(cfg, indent=2))
+
+    # Defer heavy imports until after argparse (so --help works without CUDA ext)
+    from tqdm import tqdm
+    from torch.utils.data import DataLoader
+    from model.sem.GraphAttention import graphAttention_seg_repro as Model
+    from util.data_util import collate_fn
+    from util.sealingNails_npz import SealingNailDatasetNPZ
+
+    # Unpack config values
+    root = cfg["data_root"]
+    num_class = cfg["num_classes"]
+    num_points = cfg["num_points"]
+    end_epoch = cfg["epoch"]
+    learning_rate = cfg["learning_rate"]
+    weight_decay = cfg["weight_decay"]
+    batch_size = cfg["batch_size"]
+
     LEARNING_RATE_CLIP = 1e-5
     MOMENTUM_ORIGINAL = 0.1
     MOMENTUM_DECCAY = 0.5
-    MOMENTUM_DECCAY_STEP = 20
-    global_epoch = 0
+    MOMENTUM_DECCAY_STEP = cfg.get("lr_decay_step_size", 20)
+
+    # Change device selection to prefer CUDA if available
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    class_label = {'Background1': 0, 'Burst': 1, 'Pit': 2, 'Stain': 3, 'Warpage': 4, 'Background2': 5, 'Burst2': 6, 'Pinhole': 7}
+    feat_dim = 6
 
     """Load Dataset"""
     TRAIN_SET = SealingNailDatasetNPZ(root=root, npoints=num_points, split='train', use_cache=True)
     # Reduce num_workers for better stability
     num_workers = min(4, os.cpu_count() or 1)
-    trainDataLoader = DataLoader(TRAIN_SET, batch_size=4, shuffle=True, num_workers=num_workers, drop_last=True, collate_fn=collate_fn, pin_memory=True)
+    trainDataLoader = DataLoader(TRAIN_SET, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True, collate_fn=collate_fn, pin_memory=True)
     TEST_SET = SealingNailDatasetNPZ(root=root, npoints=num_points, split='test', use_cache=True)
-    testDataLoader = DataLoader(TEST_SET, batch_size=4, shuffle=False, num_workers=num_workers, drop_last=True, collate_fn=collate_fn, pin_memory=True)
+    testDataLoader = DataLoader(TEST_SET, batch_size=batch_size, shuffle=False, num_workers=num_workers, drop_last=True, collate_fn=collate_fn, pin_memory=True)
 
     """Calculate Weight"""
     weight = [float('{:.4f}'.format(i)) for i in TRAIN_SET.weight.tolist()]
@@ -80,32 +139,13 @@ def main():
     loss_fn = torch.nn.CrossEntropyLoss(weight=weight)
     # loss_fn = FocalLoss(weight=weight, device=device)
 
-    # load weight
-    try:
-        checkpoint = torch.load('./log/weight/last_model.pth', weights_only=True)
-        start_epoch = checkpoint['epoch']
-        classifier.load_state_dict(checkpoint['model_state_dict'])
-        logger.info('use pretrain model')
-    except:
-        logger.info('no existing model, starting training from scratch...')
-        start_epoch = 0
+    # No resume from checkpoint — start fresh
+    start_epoch = 0
 
-    # Optimizer Parameter
-    if optimizer == 'Adam':
-        optimizer = torch.optim.AdamW(
-            classifier.parameters(),
-            lr=learning_rate,
-            betas=(0.9, 0.999),
-            eps=1e-08,
-            weight_decay=weight_decay
-        )
-    else:
-        optimizer = torch.optim.SGD(
-            classifier.parameters(),
-            lr=learning_rate,
-            momentum=0.9
-        )
+    # Optimizer
+    optimizer = build_optimizer(cfg["optimizer"], classifier.parameters(), learning_rate, weight_decay)
 
+    global_epoch = 0
     best_mean_class_IoU = 0
     for epoch in range(start_epoch, end_epoch):
         logger.info('Epoch %d (%d/%s):' % (epoch + 1, epoch + 1, end_epoch))
@@ -120,7 +160,8 @@ def main():
         eval_loss = 0
 
         '''Adjust learning rate and BN momentum'''
-        lr = max(learning_rate * (lr_decay ** (epoch // MOMENTUM_DECCAY_STEP)), LEARNING_RATE_CLIP)
+        lr_mult = build_lr_lambda(cfg)(epoch)
+        lr = max(learning_rate * lr_mult, 1e-5)
         logger.info('Learning rate:%f' % lr)
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
@@ -137,10 +178,10 @@ def main():
             # coords = coords.cuda()
             # feats = feats.cuda()
             # labels = labels.cuda()  # This line caused the error
-            
+
             # Correct data movement to device
             coords, feats, targets, offset = coords.float().to(device), feats.float().to(device), targets.long().to(device), offset.to(device)
-            
+
             """Training"""
             optimizer.zero_grad()
             seg_pred = classifier([coords, feats, offset])
@@ -235,4 +276,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

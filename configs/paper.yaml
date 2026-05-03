@@ -10,6 +10,7 @@ learning_rate: 0.01                # paper Table 2
 batch_size: 8                      # paper Table 2
 weight_decay: 0.0001               # not in Table 2 — kept from original train.py
 lr_decay: multistep
+lr_decay_step_size: 0              # unused for multistep schedule; kept for schema parity
 lr_decay_milestones: [120, 240]    # PLACEHOLDER — not in paper, edit if known
 lr_decay_gamma: 0.1                # PLACEHOLDER — not in paper, edit if known
 k_neighbors: 16                    # PLACEHOLDER — not in paper, edit if known

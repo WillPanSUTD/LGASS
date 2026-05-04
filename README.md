@@ -62,7 +62,7 @@ Comparison on the sealing-nail dataset (paper Table 3, **bold = best**, _underli
 | PTv3       | _99.03_  | **94.96**| _75.13_  | **77.32**| 67.98    | 60.44    | 89.17    | 56.21    |
 | **LGASS**  | **99.47**| _92.37_  | **79.23**| _76.22_  | **72.17**| **71.33**| **91.61**| **64.95**|
 
-**Note on reproduction:** numbers above were produced with a checkpoint that we no longer have on hand. Re-running the published configuration may yield results within ±0.5% of these due to non-determinism in `pointops` kernels and CUDA/PyTorch version drift. See `configs/` and `scripts/reproduce_paper.sh`.
+**Note on reproduction:** the numbers above are the published values from paper Table 3. A locally re-trained checkpoint matching these numbers is **not yet bundled** with this code release — the original checkpoint is no longer on hand and a 300-epoch retrain is in progress. To reproduce yourself, run `bash scripts/reproduce_paper.sh` (uses `configs/paper.yaml`); expect drift of ±0.5% on the headline metrics due to non-determinism in `pointops` kernels and CUDA / PyTorch version differences. Plan for several days of GPU time per the schedule in Table 2.
 
 ## Ablation
 
